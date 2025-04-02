@@ -1,0 +1,9 @@
+project(prototype C)
+add_executable(prototype my.c)
+target_link_libraries(prototype PRIVATE
+        ${CMAKE_SOURCE_DIR}/lib/libduckdb_bundle.a
+        ${CMAKE_SOURCE_DIR}/lib/libduckdb_static.a
+        pthread
+        dl
+        c++
+)

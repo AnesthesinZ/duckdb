@@ -1,5 +1,10 @@
 #include "capi_tester.hpp"
 
+#include <duckdb/main/capi/capi_internal.hpp>
+
+namespace duckdb {
+struct DuckDBResultData;
+}
 using namespace duckdb;
 using namespace std;
 
@@ -8,45 +13,84 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 	duckdb_connection con;
 	duckdb_result result;
 
+	// if(duckdb_query(con, "ATTACH '../resources/tpch-sf1.db' AS file_db;", &result) != DuckDBSuccess) {
+	// 	fprintf(stderr, "Failed to query attach file db.\n");
+	// }
+
 	REQUIRE(duckdb_open(NULL, &db) != DuckDBError);
 	REQUIRE(duckdb_connect(db, &con) != DuckDBError);
-	//! Create a table with 40 columns
-	REQUIRE(duckdb_query(con,
-	                     "CREATE TABLE foo (c00 varchar, c01 varchar, c02 varchar, c03 varchar, c04 varchar, c05 "
-	                     "varchar, c06 varchar, c07 varchar, c08 varchar, c09 varchar, c10 varchar, c11 varchar, c12 "
-	                     "varchar, c13 varchar, c14 varchar, c15 varchar, c16 varchar, c17 varchar, c18 varchar, c19 "
-	                     "varchar, c20 varchar, c21 varchar, c22 varchar, c23 varchar, c24 varchar, c25 varchar, c26 "
-	                     "varchar, c27 varchar, c28 varchar, c29 varchar, c30 varchar, c31 varchar, c32 varchar, c33 "
-	                     "varchar, c34 varchar, c35 varchar, c36 varchar, c37 varchar, c38 varchar, c39 varchar);",
-	                     NULL) != DuckDBError);
-	//! Get table info for the created table
-	REQUIRE(duckdb_query(con, "PRAGMA table_info(foo);", &result) != DuckDBError);
 
-	//! Columns ({cid, name, type, notnull, dflt_value, pk}}
-	idx_t col_count = duckdb_column_count(&result);
-	REQUIRE(col_count == 6);
-	idx_t chunk_count = duckdb_result_chunk_count(result);
+	REQUIRE(duckdb_query(con, "ATTACH 'transfer.db' AS file_db;", &result) == DuckDBSuccess);
 
-	// Loop over the produced chunks
-	for (idx_t chunk_idx = 0; chunk_idx < chunk_count; chunk_idx++) {
-		duckdb_data_chunk chunk = duckdb_result_get_chunk(result, chunk_idx);
-		idx_t row_count = duckdb_data_chunk_get_size(chunk);
+	REQUIRE(duckdb_query(con, "ATTACH ':memory:' AS mem_db;", &result) == DuckDBSuccess);
 
-		for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
-			for (idx_t col_idx = 0; col_idx < col_count; col_idx++) {
-				//! Get the column
-				duckdb_vector vector = duckdb_data_chunk_get_vector(chunk, col_idx);
-				uint64_t *validity = duckdb_vector_get_validity(vector);
-				bool is_valid = duckdb_validity_row_is_valid(validity, row_idx);
+	REQUIRE(duckdb_query(con, "COPY FROM DATABASE file_db TO mem_db;", &result) == DuckDBSuccess);
+	REQUIRE(duckdb_query(con, "USE mem_db;", &result) == DuckDBSuccess);
 
-				if (col_idx == 4) {
-					//'dflt_value' column
-					REQUIRE(is_valid == false);
-				}
-			}
-		}
+	REQUIRE(duckdb_query(con, "SELECT * FROM cp;", &result) == DuckDBSuccess);
+
+	// auto &result_data = *(reinterpret_cast<duckdb::DuckDBResultData *>(result.internal_data));
+	// result_data.result_set_type = duckdb::CAPIResultSetType::CAPI_RESULT_TYPE_MATERIALIZED;
+	// auto &materialized = reinterpret_cast<duckdb::MaterializedQueryResult &>(*result_data.result);
+	//
+	// // get a value first.
+	// idx_t chunk_count = duckdb_result_chunk_count(result);
+	// auto & collection = materialized.Collection();
+	//
+	// std::vector<void*> values;
+	// values.reserve(collection.ColumnCount() * chunk_count);
+	//
+	// for (auto &chunk : collection.Chunks()) {
+	// 	for (idx_t c = 0; c < chunk.ColumnCount(); c++) {
+	// 		values.push_back(chunk.data[c].GetData());
+	// 	}
+	//
+	// 	// for string I need to unmarshall it anyways.. so I just need to know the length.
+	// 	// just need to know which string block it is.
+	// 	// the problem here is that, I need to know which one is zipped and which one is not..
+	// 	// at least I need to find the first one that's zipped.
+	// 	// but need to know if those are contigious.
+	// 	auto x = (string_t*)chunk.data[13].GetData();
+	//
+	// }
+
+	chunk_results ptrs = duckdb_chunk_data_ptrs(result);
+
+
+
+	// while(true) {
+	duckdb_data_chunk chunk = duckdb_result_get_chunk(result, 0);
+	duckdb_data_chunk chunk1 = duckdb_result_get_chunk(result, 1);
+
+		// if(!chunk) {
+		// 	break;
+		// }
+
+	uint64_t* order_key = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 0));
+	uint64_t* order_key1 = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk1, 0));
+	uint64_t* part_key = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 1));
+	uint64_t* part_key1 = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk1, 1));
+	uint64_t* supp_key = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 2));
+	uint64_t* line_number = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 3));
+
+	uint64_t* quantity = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 4));
+	uint64_t* extended_price = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 5));
+	uint64_t* discount= (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 6));
+	uint64_t* tax = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 7));
+
+	duckdb_string_t* return_flag = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 8));
+	duckdb_string_t* line_status = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 9));
+
+	int32_t* ship_date = (int32_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 10));
+	int32_t* commit_date = (int32_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 11));
+	int32_t* receipt_date = (int32_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 12));
+
+	duckdb_string_t* ship_instruct = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 13));
+	duckdb_string_t* ship_mode = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 14));
+	duckdb_string_t* comment = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 15));
 		duckdb_destroy_data_chunk(&chunk);
-	}
+		duckdb_destroy_data_chunk(&chunk1);
+	// }
 
 	duckdb_destroy_result(&result);
 	duckdb_disconnect(&con);

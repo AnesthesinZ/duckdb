@@ -1057,6 +1057,16 @@ Use `duckdb_result_chunk_count` to figure out how many chunks there are in the r
 */
 DUCKDB_C_API duckdb_data_chunk duckdb_result_get_chunk(duckdb_result result, idx_t chunk_index);
 
+typedef struct {
+	void* vector_pointers;
+	size_t total_vector_count;
+	size_t last_chunk_row_count;
+	size_t total_rows;
+	size_t chunk_count;
+} chunk_results;
+
+DUCKDB_C_API chunk_results duckdb_chunk_data_ptrs(duckdb_result result);
+
 /*!
 **DEPRECATION NOTICE**: This method is scheduled for removal in a future release.
 
