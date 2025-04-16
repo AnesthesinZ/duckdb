@@ -9,10 +9,75 @@ struct DuckDBResultData;
 using namespace duckdb;
 using namespace std;
 
+DUCKDB_TYPE schema_v2[11] = {DUCKDB_TYPE_BIGINT,
+				  DUCKDB_TYPE_BIGINT,
+				  DUCKDB_TYPE_BIGINT,
+				  DUCKDB_TYPE_BIGINT,
+				  DUCKDB_TYPE_DECIMAL,
+				  DUCKDB_TYPE_DECIMAL,
+				  DUCKDB_TYPE_DECIMAL,
+				  DUCKDB_TYPE_DECIMAL,
+				  DUCKDB_TYPE_DATE,
+				  DUCKDB_TYPE_DATE,
+				  DUCKDB_TYPE_DATE
+};
+
+int get_unit(DUCKDB_TYPE type) {
+	switch (type) {
+	case DUCKDB_TYPE_BIGINT:
+	case DUCKDB_TYPE_DECIMAL:
+		return sizeof(int64_t);
+	case DUCKDB_TYPE_DATE:
+		return sizeof(int32_t);
+	}
+}
+
 duckdb_date create_duckdb_date_v2(int32_t days) {
 	duckdb_date date;
 	date.days = days;
 	return date;
+}
+
+void copy_to(int column_count, segment_placeholder* sp, chunk_results* result_ptr, int receive_time, int copy_unit) {
+	for(int column_idx = 0; column_idx < column_count; column_idx++) {
+		int unit_size = get_unit(schema_v2[column_idx]);
+		int seg_idx_to_write_to = sp[column_idx].next_seg_for_write;
+		idx_t segment_capacity = sp[column_idx].segment_tuple_counts[seg_idx_to_write_to];
+
+		auto src_ptr = result_ptr->vector_pointers[receive_time * column_count + column_idx];
+
+		if(segment_capacity >= copy_unit) {
+			int copy_size = copy_unit;
+			// modify the current segment_capacity
+			sp[column_idx].segment_tuple_counts[seg_idx_to_write_to] -= copy_size;
+
+			// copy all 2048 value to the memory
+			auto dest_ptr = sp[column_idx].segment_starts[seg_idx_to_write_to];
+			memcpy(dest_ptr, src_ptr, copy_size * unit_size);
+
+			// advance the pointer.
+			sp[column_idx].segment_starts[seg_idx_to_write_to] = dest_ptr +(copy_size * unit_size);
+		} else {
+			int copy_size = sp[column_idx].segment_tuple_counts[seg_idx_to_write_to];
+			sp[column_idx].segment_tuple_counts[seg_idx_to_write_to] -= copy_size;
+
+			// copy segment_capacity amount of value to the memory
+			auto dest_ptr = sp[column_idx].segment_starts[seg_idx_to_write_to];
+			memcpy(dest_ptr, src_ptr, copy_size * unit_size);
+
+			// advance the seg_idx_to_write_to
+			seg_idx_to_write_to += 1;
+			sp[column_idx].next_seg_for_write = seg_idx_to_write_to;
+
+			// copy the rest of values to the next seg
+			copy_size = copy_unit - copy_size;
+			dest_ptr = sp[column_idx].segment_starts[seg_idx_to_write_to];
+			memcpy(dest_ptr, src_ptr, copy_size * unit_size);
+
+			// advance the pointer
+			sp[column_idx].segment_starts[seg_idx_to_write_to] = dest_ptr +(copy_size * unit_size);
+		}
+	}
 }
 
 TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", "[capi]") {
@@ -20,19 +85,26 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 	duckdb_connection con;
 	duckdb_result result;
 
-	REQUIRE(duckdb_open(NULL, &db) != DuckDBError);
+	REQUIRE(duckdb_open("tpch-sf1.db", &db) != DuckDBError);
 	REQUIRE(duckdb_connect(db, &con) != DuckDBError);
 
+	duckdb_query(con, "SELECT l_orderkey,l_partkey,l_suppkey,l_linenumber,l_quantity,l_extendedprice,l_discount,l_tax,l_shipdate,l_commitdate,l_receiptdate "
+				   "FROM lineitem LIMIT 5000;", &result);
 
-	if(duckdb_query(con, "ATTACH ':memory:' AS trans_mem_db;", &result) != DuckDBSuccess) {
-		fprintf(stderr, "Failed to attach memory db.\n");
+	if(duckdb_query(con, "DROP TABLE lineitem_cp;", NULL) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to drop result table.\n");
 	}
 
-	if(duckdb_query(con, "USE trans_mem_db;", &result) != DuckDBSuccess) {
-		fprintf(stderr, "Failed to use trans_mem_db.\n");
-	}
+	if (duckdb_query(con, "CREATE TABLE lineitem_cp ("
+												   "l_orderkey BIGINT, l_partkey BIGINT,l_suppkey BIGINT,l_linenumber BIGINT,"
+												   "l_quantity DECIMAL(15,2), l_extendedprice DECIMAL(15,2), l_discount DECIMAL(15,2), l_tax DECIMAL(15,2), "
+												   "l_shipdate DATE, l_commitdate DATE, l_receiptdate DATE"
+												   ");", NULL) != DuckDBSuccess ) {
+		fprintf(stderr, "failed to create copy table\n");
+		exit(-1);
+												   }
 
-	duckdb_state state = duckdb_query(con, "CREATE TABLE lineitem_cp (l_orderkey BIGINT, l_tax DECIMAL(15,2), l_receiptdate DATE);", NULL);
+	chunk_results* result_ptr = duckdb_chunk_data_ptrs(result);
 
 	duckdb_appender appender;
 	if (duckdb_appender_create(con, NULL, "lineitem_cp", &appender) == DuckDBError) {
@@ -40,95 +112,28 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 		printf("Failed to create appender\n");
 	}
 
-	int column_count = 3;
-	auto *appender_instance = reinterpret_cast<AppenderWrapper *>(appender);
-
-	int target_allocation_size = 6001215;
-
-	auto insertStartTime = std::chrono::high_resolution_clock::now();
+	const int column_count = 11;
+	size_t target_allocation_size = result_ptr->total_rows;
 	auto sp = duckdb_appender_placeholder(appender, target_allocation_size, column_count);
-	auto prepareEndTime = std::chrono::high_resolution_clock::now();
 
-	// col1
-	// how many segments are allocated for this column
-	idx_t column_segment_count = sp[0].number_of_segments;
-	int64_t data = 0;
+	size_t receive_times = target_allocation_size / 2048;
+	size_t remainder = target_allocation_size % 2048;
 
-	// fill all the way to the second last segment
-	for(int seg = 0; seg < column_segment_count; seg++) {
-		idx_t segment_capacity = sp[0].segment_tuple_counts[seg];
-		for(int vector_idx = 0; vector_idx < segment_capacity; vector_idx++) {
-			((uint64_t*)sp[0].segment_starts[seg])[vector_idx] = data;
-			data ++;
-		}
+	int copy_unit = 2048;
+
+	for(int receive_time = 0; receive_time < receive_times; receive_time++) {
+		copy_to(column_count, sp, result_ptr, receive_time, copy_unit);
 	}
 
-	column_segment_count = sp[1].number_of_segments;
-	data = 0;
-	for(int seg = 0; seg < column_segment_count; seg++) {
-		idx_t segment_capacity = sp[1].segment_tuple_counts[seg];
-		for(int vector_idx = 0; vector_idx < segment_capacity; vector_idx++) {
-			((uint64_t*)sp[1].segment_starts[seg])[vector_idx] = data;
-			data ++;
-		}
-	}
-
-	column_segment_count = sp[2].number_of_segments;
-	int32_t data32 = 100;
-	for(int seg = 0; seg < column_segment_count; seg++) {
-		idx_t segment_capacity = sp[2].segment_tuple_counts[seg];
-		for(int vector_idx = 0; vector_idx < segment_capacity; vector_idx++) {
-			((uint32_t*)sp[2].segment_starts[seg])[vector_idx] = data32;
-		}
+	if(remainder > 0) {
+		copy_to(column_count, sp, result_ptr, receive_times, remainder);
 	}
 
 	duckdb_destroy_segment_placeholder(sp, column_count);
-
-	auto insertEndTime = std::chrono::high_resolution_clock::now();
-	auto insertDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
-							  insertEndTime - insertStartTime)
-							  .count();
-
-	std::cout << "Preallocated Insertion completed in " << insertDuration << " milliseconds" << std::endl;
-
-	auto prepareDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
-							  prepareEndTime - insertStartTime)
-							  .count();
-
-	std::cout << "Preallocated prepare completed in " << prepareDuration << " milliseconds" << std::endl;
-
-
-	// insertStartTime = std::chrono::high_resolution_clock::now();
-	//
-	// duckdb_date date;
-	// date.days = 100;
-	//
-	// for(int i = 0; i< target_allocation_size; i++) {
-	// 	duckdb_append_int64(appender, i);
-	// 	duckdb_append_double(appender, i);
-	// 	duckdb_append_date(appender, date);
-	// }
-	//
-	// insertEndTime = std::chrono::high_resolution_clock::now();
-	// insertDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
-	// 						  insertEndTime - insertStartTime)
-	// 						  .count();
-	//
-	// std::cout << "Regular Insertion completed in " << insertDuration << " milliseconds" << std::endl;
-
 	duckdb_appender_destroy(&appender);
 
-	if(duckdb_query(con, "ATTACH 'tt.db' AS transfer;", &result) != DuckDBSuccess) {
-		fprintf(stderr, "Failed to attach file db.\n");
-	}
-
-	if(duckdb_query(con, "DROP TABLE transfer.lineitem_cp;", &result) != DuckDBSuccess) {
-		fprintf(stderr, "Failed to drop result table.\n");
-	}
-
-	if(duckdb_query(con, "COPY FROM DATABASE trans_mem_db TO transfer;", &result) != DuckDBSuccess) {
-		fprintf(stderr, "Failed to copy to file db.\n");
-	}
+	duckdb_destroy_chunk_data_ptrs(result_ptr);
+	duckdb_destroy_result(&result);
 
 	duckdb_destroy_result(&result);
 	duckdb_disconnect(&con);

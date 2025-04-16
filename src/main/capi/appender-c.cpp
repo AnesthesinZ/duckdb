@@ -353,8 +353,8 @@ DUCKDB_C_API segment_placeholder* duckdb_appender_placeholder(duckdb_appender du
 			placeholder.segment_starts[j] = seg.segment_start.data()[j];
 			placeholder.segment_tuple_counts[j] = seg.max_tuple_count[j];
 		}
+		placeholder.next_seg_for_write = 0;
 	}
-
 	return result;
 }
 

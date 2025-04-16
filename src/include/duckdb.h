@@ -1069,6 +1069,7 @@ typedef struct {
 	uint8_t** segment_starts;
 	idx_t* segment_tuple_counts;
 	idx_t number_of_segments;
+	int next_seg_for_write;
 } segment_placeholder;
 
 DUCKDB_C_API chunk_results* duckdb_chunk_data_ptrs(duckdb_result result);
