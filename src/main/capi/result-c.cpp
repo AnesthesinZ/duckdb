@@ -658,35 +658,42 @@ duckdb_data_chunk duckdb_result_get_chunk(duckdb_result result, idx_t chunk_idx)
 	return reinterpret_cast<duckdb_data_chunk>(chunk.release());
 }
 
-chunk_results duckdb_chunk_data_ptrs(duckdb_result result) {
-	chunk_results chunk_results;
-	auto &result_data = *(reinterpret_cast<duckdb::DuckDBResultData *>(result.internal_data));
+DUCKDB_C_API chunk_results* duckdb_chunk_data_ptrs(duckdb_result duckdb_result) {
+	chunk_results * results = new chunk_results;
+	auto &result_data = *(reinterpret_cast<duckdb::DuckDBResultData *>(duckdb_result.internal_data));
 	result_data.result_set_type = duckdb::CAPIResultSetType::CAPI_RESULT_TYPE_MATERIALIZED;
 	auto &materialized = reinterpret_cast<duckdb::MaterializedQueryResult &>(*result_data.result);
-	idx_t chunk_count = duckdb_result_chunk_count(result);
+	idx_t chunk_count = duckdb_result_chunk_count(duckdb_result);
 	auto & collection = materialized.Collection();
 
-	std::vector<void*> values;
 	size_t total_vector_count = collection.ColumnCount() * chunk_count;
-	values.reserve(total_vector_count);
+
+	void** values = new void*[total_vector_count];
+
+	idx_t index = 0;
 	idx_t last_chunk_row_count = 0;
 	idx_t total_row_count = 0;
 
 	for (auto &chunk : collection.Chunks()) {
 		for (idx_t c = 0; c < chunk.ColumnCount(); c++) {
-			values.push_back(chunk.data[c].GetData());
+			values[index++] = chunk.data[c].GetData();
 		}
 		last_chunk_row_count = chunk.size();
 		total_row_count += last_chunk_row_count;
 	}
 
-	chunk_results.vector_pointers = values.data();
-	chunk_results.total_vector_count = total_vector_count;
-	chunk_results.last_chunk_row_count = last_chunk_row_count;
-	chunk_results.total_rows = total_row_count;
-	chunk_results.chunk_count = chunk_count;
+	results->vector_pointers = values;
+	results->total_vector_count = total_vector_count;
+	results->last_chunk_row_count = last_chunk_row_count;
+	results->total_rows = total_row_count;
+	results->chunk_count = chunk_count;
 
-	return chunk_results;
+	return results;
+}
+
+DUCKDB_C_API void duckdb_destroy_chunk_data_ptrs(chunk_results* results) {
+	delete[] results->vector_pointers;
+	delete results;
 }
 
 bool duckdb_result_is_streaming(duckdb_result result) {

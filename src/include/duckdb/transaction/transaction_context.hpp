@@ -55,6 +55,26 @@ public:
 	void ResetActiveQuery();
 	void SetActiveQuery(transaction_t query_number);
 
+	void SetDataPointer(std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer) {
+		if(HasActiveTransaction()) {
+			current_transaction->SetDataPointer(data_ptr_pointer);
+		}
+	}
+
+	std::vector<duckdb::SegmentPlaceHolder>* GetDataPointer() {
+		if(HasActiveTransaction()) {
+			return current_transaction->GetDataPointer();
+		}
+		return nullptr;
+	}
+
+	bool isAppendPlaceHolder() const {
+		if(HasActiveTransaction()) {
+			return current_transaction->isAppendPlaceHolder();
+		}
+		return false;
+	}
+
 private:
 	ClientContext &context;
 	bool auto_commit;

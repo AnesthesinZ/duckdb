@@ -123,6 +123,7 @@ ErrorData MetaTransaction::Commit() {
 		auto &transaction = entry->second.get();
 		if (!error.HasError()) {
 			// commit
+			transaction.SetDataPointer(GetDataPointer());
 			error = transaction_manager.CommitTransaction(context, transaction);
 		} else {
 			// we have encountered an error previously - roll back subsequent entries

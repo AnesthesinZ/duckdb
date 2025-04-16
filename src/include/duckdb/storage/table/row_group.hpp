@@ -150,6 +150,7 @@ public:
 
 	void InitializeAppend(RowGroupAppendState &append_state);
 	void Append(RowGroupAppendState &append_state, DataChunk &chunk, idx_t append_count);
+	void AppendPlaceholder(RowGroupAppendState &append_state, idx_t append_count, std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection, int target_allocation_size);
 
 	void Update(TransactionData transaction, DataChunk &updates, row_t *ids, idx_t offset, idx_t count,
 	            const vector<PhysicalIndex> &column_ids);

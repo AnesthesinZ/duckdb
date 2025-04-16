@@ -307,3 +307,61 @@ duckdb_state duckdb_append_data_chunk(duckdb_appender appender, duckdb_data_chun
 	auto data_chunk = reinterpret_cast<duckdb::DataChunk *>(chunk);
 	return duckdb_appender_run_function(appender, [&](Appender &appender) { appender.AppendDataChunk(*data_chunk); });
 }
+
+DUCKDB_C_API segment_placeholder* duckdb_appender_placeholder(duckdb_appender duck_appender, int target_allocation_size, int column_count) {
+	auto *appender_instance = reinterpret_cast<AppenderWrapper *>(duck_appender);
+
+	std::vector<duckdb::SegmentPlaceHolder> data_ptr_pointer;
+
+	for(int i = 0; i < column_count; i++) {
+		duckdb::SegmentPlaceHolder holder;
+		data_ptr_pointer.push_back(holder);
+	}
+
+	if(target_allocation_size <= 2048) {
+		appender_instance->appender->AppendPlaceholder(target_allocation_size, &data_ptr_pointer, true);
+	} else {
+		appender_instance->appender->AppendPlaceholder(2048, &data_ptr_pointer, true);
+
+		int rest_to_allocate = target_allocation_size - 2048;
+
+		int bulks = rest_to_allocate / 40960;
+		int residual = rest_to_allocate % 40960;
+
+		for(int i = 0; i < bulks; i++) {
+			appender_instance->appender->AppendPlaceholder(40960, &data_ptr_pointer, false);
+		}
+		if (residual > 0) {
+			appender_instance->appender->AppendPlaceholder(residual, &data_ptr_pointer, false);
+		}
+	}
+
+	segment_placeholder* result = new segment_placeholder[column_count];
+
+	for (size_t i = 0; i < column_count; ++i) {
+		duckdb::SegmentPlaceHolder &seg = data_ptr_pointer[i];
+
+		segment_placeholder &placeholder = result[i];
+
+		size_t count = seg.max_tuple_count.size();
+		placeholder.number_of_segments = count;
+
+		placeholder.segment_starts = new uint8_t*[count];
+		placeholder.segment_tuple_counts = new idx_t[count];
+
+		for (size_t j = 0; j < count; ++j) {
+			placeholder.segment_starts[j] = seg.segment_start.data()[j];
+			placeholder.segment_tuple_counts[j] = seg.max_tuple_count[j];
+		}
+	}
+
+	return result;
+}
+
+DUCKDB_C_API void duckdb_destroy_segment_placeholder(segment_placeholder* result, int column_count) {
+	for (int i = 0; i < column_count; ++i) {
+		delete[] result[i].segment_starts;
+		delete[] result[i].segment_tuple_counts;
+	}
+	delete[] result;
+}

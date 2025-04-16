@@ -1,5 +1,6 @@
 #include "capi_tester.hpp"
 
+#include <iostream>
 #include <duckdb/main/capi/capi_internal.hpp>
 
 namespace duckdb {
@@ -8,93 +9,132 @@ struct DuckDBResultData;
 using namespace duckdb;
 using namespace std;
 
+duckdb_date create_duckdb_date_v2(int32_t days) {
+	duckdb_date date;
+	date.days = days;
+	return date;
+}
+
 TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", "[capi]") {
 	duckdb_database db;
 	duckdb_connection con;
 	duckdb_result result;
 
-	// if(duckdb_query(con, "ATTACH '../resources/tpch-sf1.db' AS file_db;", &result) != DuckDBSuccess) {
-	// 	fprintf(stderr, "Failed to query attach file db.\n");
-	// }
-
 	REQUIRE(duckdb_open(NULL, &db) != DuckDBError);
 	REQUIRE(duckdb_connect(db, &con) != DuckDBError);
 
-	REQUIRE(duckdb_query(con, "ATTACH 'transfer.db' AS file_db;", &result) == DuckDBSuccess);
 
-	REQUIRE(duckdb_query(con, "ATTACH ':memory:' AS mem_db;", &result) == DuckDBSuccess);
+	if(duckdb_query(con, "ATTACH ':memory:' AS trans_mem_db;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to attach memory db.\n");
+	}
 
-	REQUIRE(duckdb_query(con, "COPY FROM DATABASE file_db TO mem_db;", &result) == DuckDBSuccess);
-	REQUIRE(duckdb_query(con, "USE mem_db;", &result) == DuckDBSuccess);
+	if(duckdb_query(con, "USE trans_mem_db;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to use trans_mem_db.\n");
+	}
 
-	REQUIRE(duckdb_query(con, "SELECT * FROM cp;", &result) == DuckDBSuccess);
+	duckdb_state state = duckdb_query(con, "CREATE TABLE lineitem_cp (l_orderkey BIGINT, l_tax DECIMAL(15,2), l_receiptdate DATE);", NULL);
 
-	// auto &result_data = *(reinterpret_cast<duckdb::DuckDBResultData *>(result.internal_data));
-	// result_data.result_set_type = duckdb::CAPIResultSetType::CAPI_RESULT_TYPE_MATERIALIZED;
-	// auto &materialized = reinterpret_cast<duckdb::MaterializedQueryResult &>(*result_data.result);
+	duckdb_appender appender;
+	if (duckdb_appender_create(con, NULL, "lineitem_cp", &appender) == DuckDBError) {
+		// handle error
+		printf("Failed to create appender\n");
+	}
+
+	int column_count = 3;
+	auto *appender_instance = reinterpret_cast<AppenderWrapper *>(appender);
+
+	int target_allocation_size = 6001215;
+
+	auto insertStartTime = std::chrono::high_resolution_clock::now();
+	auto sp = duckdb_appender_placeholder(appender, target_allocation_size, column_count);
+	auto prepareEndTime = std::chrono::high_resolution_clock::now();
+
+	// col1
+	// how many segments are allocated for this column
+	idx_t column_segment_count = sp[0].number_of_segments;
+	int64_t data = 0;
+
+	// fill all the way to the second last segment
+	for(int seg = 0; seg < column_segment_count; seg++) {
+		idx_t segment_capacity = sp[0].segment_tuple_counts[seg];
+		for(int vector_idx = 0; vector_idx < segment_capacity; vector_idx++) {
+			((uint64_t*)sp[0].segment_starts[seg])[vector_idx] = data;
+			data ++;
+		}
+	}
+
+	column_segment_count = sp[1].number_of_segments;
+	data = 0;
+	for(int seg = 0; seg < column_segment_count; seg++) {
+		idx_t segment_capacity = sp[1].segment_tuple_counts[seg];
+		for(int vector_idx = 0; vector_idx < segment_capacity; vector_idx++) {
+			((uint64_t*)sp[1].segment_starts[seg])[vector_idx] = data;
+			data ++;
+		}
+	}
+
+	column_segment_count = sp[2].number_of_segments;
+	int32_t data32 = 100;
+	for(int seg = 0; seg < column_segment_count; seg++) {
+		idx_t segment_capacity = sp[2].segment_tuple_counts[seg];
+		for(int vector_idx = 0; vector_idx < segment_capacity; vector_idx++) {
+			((uint32_t*)sp[2].segment_starts[seg])[vector_idx] = data32;
+		}
+	}
+
+	duckdb_destroy_segment_placeholder(sp, column_count);
+
+	auto insertEndTime = std::chrono::high_resolution_clock::now();
+	auto insertDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+							  insertEndTime - insertStartTime)
+							  .count();
+
+	std::cout << "Preallocated Insertion completed in " << insertDuration << " milliseconds" << std::endl;
+
+	auto prepareDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+							  prepareEndTime - insertStartTime)
+							  .count();
+
+	std::cout << "Preallocated prepare completed in " << prepareDuration << " milliseconds" << std::endl;
+
+
+	// insertStartTime = std::chrono::high_resolution_clock::now();
 	//
-	// // get a value first.
-	// idx_t chunk_count = duckdb_result_chunk_count(result);
-	// auto & collection = materialized.Collection();
+	// duckdb_date date;
+	// date.days = 100;
 	//
-	// std::vector<void*> values;
-	// values.reserve(collection.ColumnCount() * chunk_count);
-	//
-	// for (auto &chunk : collection.Chunks()) {
-	// 	for (idx_t c = 0; c < chunk.ColumnCount(); c++) {
-	// 		values.push_back(chunk.data[c].GetData());
-	// 	}
-	//
-	// 	// for string I need to unmarshall it anyways.. so I just need to know the length.
-	// 	// just need to know which string block it is.
-	// 	// the problem here is that, I need to know which one is zipped and which one is not..
-	// 	// at least I need to find the first one that's zipped.
-	// 	// but need to know if those are contigious.
-	// 	auto x = (string_t*)chunk.data[13].GetData();
-	//
+	// for(int i = 0; i< target_allocation_size; i++) {
+	// 	duckdb_append_int64(appender, i);
+	// 	duckdb_append_double(appender, i);
+	// 	duckdb_append_date(appender, date);
 	// }
+	//
+	// insertEndTime = std::chrono::high_resolution_clock::now();
+	// insertDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+	// 						  insertEndTime - insertStartTime)
+	// 						  .count();
+	//
+	// std::cout << "Regular Insertion completed in " << insertDuration << " milliseconds" << std::endl;
 
-	chunk_results ptrs = duckdb_chunk_data_ptrs(result);
+	duckdb_appender_destroy(&appender);
 
+	if(duckdb_query(con, "ATTACH 'tt.db' AS transfer;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to attach file db.\n");
+	}
 
+	if(duckdb_query(con, "DROP TABLE transfer.lineitem_cp;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to drop result table.\n");
+	}
 
-	// while(true) {
-	duckdb_data_chunk chunk = duckdb_result_get_chunk(result, 0);
-	duckdb_data_chunk chunk1 = duckdb_result_get_chunk(result, 1);
-
-		// if(!chunk) {
-		// 	break;
-		// }
-
-	uint64_t* order_key = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 0));
-	uint64_t* order_key1 = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk1, 0));
-	uint64_t* part_key = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 1));
-	uint64_t* part_key1 = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk1, 1));
-	uint64_t* supp_key = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 2));
-	uint64_t* line_number = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 3));
-
-	uint64_t* quantity = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 4));
-	uint64_t* extended_price = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 5));
-	uint64_t* discount= (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 6));
-	uint64_t* tax = (uint64_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 7));
-
-	duckdb_string_t* return_flag = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 8));
-	duckdb_string_t* line_status = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 9));
-
-	int32_t* ship_date = (int32_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 10));
-	int32_t* commit_date = (int32_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 11));
-	int32_t* receipt_date = (int32_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 12));
-
-	duckdb_string_t* ship_instruct = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 13));
-	duckdb_string_t* ship_mode = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 14));
-	duckdb_string_t* comment = (duckdb_string_t*)duckdb_vector_get_data(duckdb_data_chunk_get_vector(chunk, 15));
-		duckdb_destroy_data_chunk(&chunk);
-		duckdb_destroy_data_chunk(&chunk1);
-	// }
+	if(duckdb_query(con, "COPY FROM DATABASE trans_mem_db TO transfer;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to copy to file db.\n");
+	}
 
 	duckdb_destroy_result(&result);
 	duckdb_disconnect(&con);
 	duckdb_close(&db);
+
+	int z = 1;
 }
 
 TEST_CASE("Test Logical Types C API", "[capi]") {

@@ -43,6 +43,7 @@ public:
 
 	void InitializeAppend(ColumnAppendState &state) override;
 	void AppendData(BaseStatistics &stats, ColumnAppendState &state, UnifiedVectorFormat &vdata, idx_t count) override;
+	void AppendDataPlaceholder(BaseStatistics &append_stats, ColumnAppendState &state, idx_t append_count, std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection) override;
 	void RevertAppend(row_t start_row) override;
 	idx_t Fetch(ColumnScanState &state, row_t row_id, Vector &result) override;
 	void FetchRow(TransactionData transaction, ColumnFetchState &state, row_t row_id, Vector &result,

@@ -134,6 +134,12 @@ void StandardColumnData::AppendData(BaseStatistics &stats, ColumnAppendState &st
 	validity.AppendData(stats, state.child_appends[0], vdata, count);
 }
 
+void StandardColumnData::AppendDataPlaceholder(BaseStatistics &stats, ColumnAppendState &state, idx_t append_count,
+	std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection) {
+	ColumnData::AppendDataPlaceholder(stats, state, append_count, data_pointer_collection);
+	validity.AppendDataPlaceholder(stats, state.child_appends[0], append_count, data_pointer_collection);
+}
+
 void StandardColumnData::RevertAppend(row_t start_row) {
 	ColumnData::RevertAppend(start_row);
 

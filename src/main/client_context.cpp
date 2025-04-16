@@ -1195,6 +1195,26 @@ unique_ptr<TableDescription> ClientContext::TableInfo(const string &schema_name,
 	return TableInfo(INVALID_CATALOG, schema_name, table_name);
 }
 
+void ClientContext::AppendPlaceholder(TableDescription &description,
+									  std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection,
+									  int target_allocation_size, bool tableStart) {
+	RunFunctionInTransaction([&]() {
+		transaction.SetDataPointer(data_pointer_collection);
+		auto &table_entry =
+				Catalog::GetEntry<TableCatalogEntry>(*this, description.database, description.schema, description.table);
+
+		auto binder = Binder::CreateBinder(*this);
+		auto bound_constraints = binder->BindConstraints(table_entry);
+		MetaTransaction::Get(*this).ModifyDatabase(table_entry.ParentCatalog().GetAttached());
+
+		if(tableStart) {
+			table_entry.GetStorage().LocalAppendPlaceholder(table_entry, *this, bound_constraints, data_pointer_collection, target_allocation_size);
+		} else {
+			table_entry.GetStorage().LocalAppendPlaceholder(table_entry, *this, bound_constraints, nullptr, target_allocation_size);
+		}
+	});
+}
+
 void ClientContext::Append(TableDescription &description, ColumnDataCollection &collection,
                            optional_ptr<const vector<LogicalIndex>> column_ids) {
 

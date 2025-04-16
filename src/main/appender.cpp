@@ -486,6 +486,10 @@ void Appender::FlushInternal(ColumnDataCollection &collection) {
 	context->Append(*description, collection, &column_ids);
 }
 
+void duckdb::Appender::AppendPlaceholder(int target_allocation_size, std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection, bool tableStart) {
+	context->AppendPlaceholder(*description, data_pointer_collection, target_allocation_size, tableStart);
+}
+
 void Appender::AppendDefault() {
 	auto value = GetDefaultValue(column);
 	Append(value);

@@ -139,7 +139,11 @@ public:
 	virtual void Append(BaseStatistics &stats, ColumnAppendState &state, Vector &vector, idx_t count);
 	//! Append a vector of type [type] to the end of the column
 	void Append(ColumnAppendState &state, Vector &vector, idx_t count);
+	void AppendPlaceholder(ColumnAppendState &state, idx_t count, std::vector<SegmentPlaceHolder>* data_pointer_collection);
 	virtual void AppendData(BaseStatistics &stats, ColumnAppendState &state, UnifiedVectorFormat &vdata, idx_t count);
+
+	virtual void AppendDataPlaceholder(BaseStatistics &stats, ColumnAppendState &state, idx_t count, std::vector<SegmentPlaceHolder>* data_pointer_collection);
+	virtual void ValidityAppendDataPlaceholder(BaseStatistics &stats, ColumnAppendState &state, idx_t count, std::vector<SegmentPlaceHolder>* data_pointer_collection);
 	//! Revert a set of appends to the ColumnData
 	virtual void RevertAppend(row_t start_row);
 
