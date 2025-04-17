@@ -549,6 +549,12 @@ struct aggregate_state_t {
 	vector<LogicalType> bound_argument_types;
 };
 
+class SegmentPlaceHolder {
+public:
+	std::vector<data_ptr_t> segment_start;
+	std::vector<idx_t> max_tuple_count;
+};
+
 
 
 } // namespace duckdb

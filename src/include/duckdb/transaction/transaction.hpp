@@ -74,7 +74,21 @@ public:
 		return reinterpret_cast<const TARGET &>(*this);
 	}
 
+	void SetDataPointer(std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer) {
+		this->data_ptr_pointer = data_ptr_pointer;
+	}
+
+	std::vector<duckdb::SegmentPlaceHolder>* GetDataPointer() {
+		return this->data_ptr_pointer;
+	}
+
+	bool isAppendPlaceHolder() const {
+		return data_ptr_pointer != nullptr;
+	}
+
+
 private:
+	std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer = nullptr;
 	bool is_read_only;
 };
 

@@ -12,6 +12,8 @@
 #include "duckdb/common/winapi.hpp"
 #include "duckdb/main/table_description.hpp"
 
+#include <duckdb/common/types/column/column_data_collection.hpp>
+
 namespace duckdb {
 
 class ColumnDataCollection;
@@ -97,6 +99,10 @@ public:
 	//! Immediately flushes all previous data.
 	virtual void ClearColumns() = 0;
 
+	void AllocateEmptyChunk(int rowSize, std::vector<data_ptr_t>& data_pointer_collection) {
+		collection->AllocateEmptyChunk(rowSize, data_pointer_collection);
+	}
+
 protected:
 	void Destructor();
 	virtual void FlushInternal(ColumnDataCollection &collection) = 0;
@@ -148,6 +154,8 @@ public:
 	void AppendDefault(DataChunk &chunk, idx_t col, idx_t row);
 	void AddColumn(const string &name) override;
 	void ClearColumns() override;
+	void AppendPlaceholder(int target_allocation_size, std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection,
+		       bool tableStart);
 
 protected:
 	void FlushInternal(ColumnDataCollection &collection) override;

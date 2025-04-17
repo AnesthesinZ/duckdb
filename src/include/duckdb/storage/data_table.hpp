@@ -112,6 +112,10 @@ public:
 	void LocalAppend(TableCatalogEntry &table, ClientContext &context, ColumnDataCollection &collection,
 	                 const vector<unique_ptr<BoundConstraint>> &bound_constraints,
 	                 optional_ptr<const vector<LogicalIndex>> column_ids);
+
+	void LocalAppendPlaceholder(TableCatalogEntry &table, ClientContext &context,
+		 const vector<unique_ptr<BoundConstraint>> &bound_constraints,
+		 std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection, int size);
 	//! Merge a row group collection into the transaction-local storage
 	void LocalMerge(ClientContext &context, RowGroupCollection &collection);
 	//! Create an optimistic row group collection for this table. Used for optimistically writing parallel appends.
@@ -152,6 +156,7 @@ public:
 	void InitializeAppend(DuckTransaction &transaction, TableAppendState &state);
 	//! Append a chunk to the table using the AppendState obtained from InitializeAppend
 	void Append(DataChunk &chunk, TableAppendState &state);
+	void AppendPlaceholder(int appendCount, TableAppendState &state, std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer);
 	//! Finalize an append
 	void FinalizeAppend(DuckTransaction &transaction, TableAppendState &state);
 	//! Commit the append

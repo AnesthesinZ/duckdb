@@ -200,6 +200,39 @@ idx_t ColumnSegment::Append(ColumnAppendState &state, UnifiedVectorFormat &appen
 	return function.get().append(*state.append_state, *this, stats, append_data, offset, count);
 }
 
+
+idx_t ColumnSegment::AppendPlaceholder(ColumnAppendState &state,
+									   idx_t allocation_count,
+									   SegmentPlaceHolder* segment_placeholder) {
+	D_ASSERT(segment_type == ColumnSegmentType::TRANSIENT);
+
+	idx_t max_tuple_count = state.current->segment_size / state.current->type_size;
+	idx_t copy_count = MinValue<idx_t>(allocation_count, max_tuple_count - this->count);
+
+	if(this->count == 0 && segment_placeholder != nullptr) {
+		auto target_ptr = state.append_state->handle.Ptr();
+		segment_placeholder->segment_start.push_back(target_ptr);
+		segment_placeholder->max_tuple_count.push_back(copy_count);
+	}
+	if(this->count > 0 && segment_placeholder != nullptr) {
+		segment_placeholder->max_tuple_count.back() += copy_count;
+	}
+	this->count += copy_count;
+	return copy_count;
+}
+
+idx_t ColumnSegment::ValidityAppendPlaceholder(idx_t allocation_count) {
+	D_ASSERT(segment_type == ColumnSegmentType::TRANSIENT);
+
+	auto &validity_stats = stats.statistics;
+
+	idx_t copy_count = MinValue<idx_t>(allocation_count, 2048 - this->count);
+
+	this->count += copy_count;
+	validity_stats.SetHasNoNullFast();
+	return copy_count;
+}
+
 idx_t ColumnSegment::FinalizeAppend(ColumnAppendState &state) {
 	D_ASSERT(segment_type == ColumnSegmentType::TRANSIENT);
 	if (!function.get().finalize_append) {

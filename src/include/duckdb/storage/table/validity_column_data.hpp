@@ -23,6 +23,9 @@ public:
 public:
 	FilterPropagateResult CheckZonemap(ColumnScanState &state, TableFilter &filter) override;
 	void AppendData(BaseStatistics &stats, ColumnAppendState &state, UnifiedVectorFormat &vdata, idx_t count) override;
+	void AppendDataPlaceholder(BaseStatistics &append_stats, ColumnAppendState &state, idx_t append_count,
+		std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection) override;
+
 };
 
 } // namespace duckdb

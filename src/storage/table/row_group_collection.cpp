@@ -440,6 +440,54 @@ void RowGroupCollection::FinalizeAppend(TransactionData transaction, TableAppend
 	Verify();
 }
 
+bool RowGroupCollection::AppendPlaceholder(TableAppendState &state,
+										   std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection,
+										   int to_allocation_size) {
+	const idx_t row_group_size = GetRowGroupSize();
+
+	int target_allocation_size = to_allocation_size;
+	bool new_row_group = false;
+	idx_t total_append_count = target_allocation_size;
+	idx_t remaining = target_allocation_size;
+	state.total_append_count += total_append_count;
+	while (true) {
+		auto current_row_group = state.row_group_append_state.row_group;
+		idx_t append_count =
+			MinValue<idx_t>(remaining, row_group_size - state.row_group_append_state.offset_in_row_group);
+		if (append_count > 0) {
+			auto previous_allocation_size = current_row_group->GetAllocationSize();
+			current_row_group->AppendPlaceholder(state.row_group_append_state, target_allocation_size, data_pointer_collection, target_allocation_size);
+			allocation_size += current_row_group->GetAllocationSize() - previous_allocation_size;
+			// merge the stats
+			current_row_group->MergeIntoStatistics(stats);
+		}
+		remaining -= append_count;
+		if (remaining > 0) {
+			// we expect max 1 iteration of this loop (i.e. a single chunk should never overflow more than one
+			// row_group)
+			D_ASSERT(target_allocation_size == remaining + append_count);
+			// slice the input chunk
+			if (remaining < target_allocation_size) {
+				target_allocation_size = remaining;
+			}
+			// append a new row_group
+			new_row_group = true;
+			auto next_start = current_row_group->start + state.row_group_append_state.offset_in_row_group;
+
+			auto l = row_groups->Lock();
+			AppendRowGroup(l, next_start);
+			// set up the append state for this row_group
+			auto last_row_group = row_groups->GetLastSegment(l);
+			last_row_group->InitializeAppend(state.row_group_append_state);
+			continue;
+		} else {
+			break;
+		}
+	}
+	state.current_row += row_t(total_append_count);
+	return new_row_group;
+}
+
 void RowGroupCollection::CommitAppend(transaction_t commit_id, idx_t row_start, idx_t count) {
 	auto row_group = row_groups->GetSegment(row_start);
 	D_ASSERT(row_group);

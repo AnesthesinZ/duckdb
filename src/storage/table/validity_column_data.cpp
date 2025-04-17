@@ -18,4 +18,11 @@ void ValidityColumnData::AppendData(BaseStatistics &stats, ColumnAppendState &st
 	lock_guard<mutex> l(stats_lock);
 	ColumnData::AppendData(stats, state, vdata, count);
 }
+
+void ValidityColumnData::AppendDataPlaceholder(BaseStatistics &stats, ColumnAppendState &state,
+											   idx_t append_count,
+											   std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection) {
+	lock_guard<mutex> l(stats_lock);
+	ColumnData::ValidityAppendDataPlaceholder(stats, state, append_count, data_pointer_collection);
+}
 } // namespace duckdb

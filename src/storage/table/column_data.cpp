@@ -385,6 +385,72 @@ void ColumnData::Append(ColumnAppendState &state, Vector &vector, idx_t append_c
 	Append(stats->statistics, state, vector, append_count);
 }
 
+void ColumnData::AppendPlaceholder(ColumnAppendState &state,
+	idx_t append_count,
+	std::vector<SegmentPlaceHolder>* data_pointer_collection) {
+	if (parent || !stats) {
+		throw InternalException("ColumnData::Append called on a column with a parent or without stats");
+	}
+	lock_guard<mutex> l(stats_lock);
+
+	AppendDataPlaceholder(stats->statistics, state, append_count, data_pointer_collection);
+}
+
+void ColumnData::AppendDataPlaceholder(BaseStatistics &append_stats, ColumnAppendState &state, idx_t append_count,
+									   std::vector<SegmentPlaceHolder>* data_pointer_collection) {
+	idx_t offset = 0;
+	this->count += append_count;
+	while (true) {
+		// append the data from the vector
+		idx_t copied_elements;
+		if(data_pointer_collection == nullptr) {
+			copied_elements = state.current->AppendPlaceholder(state, append_count, nullptr);
+		} else {
+			copied_elements = state.current->AppendPlaceholder(state, append_count, &data_pointer_collection->at(column_index));
+		}
+		append_stats.Merge(state.current->stats.statistics);
+		if (copied_elements == append_count) {
+			// finished copying everything
+			break;
+		}
+
+		// we couldn't fit everything we wanted in the current column segment, create a new one
+		{
+			auto l = data.Lock();
+			AppendTransientSegment(l, state.current->start + state.current->count);
+			state.current = data.GetLastSegment(l);
+			state.current->InitializeAppend(state);
+		}
+
+		offset += copied_elements;
+		append_count -= copied_elements;
+	}
+}
+
+void ColumnData::ValidityAppendDataPlaceholder(BaseStatistics &append_stats, ColumnAppendState &state, idx_t append_count, std::vector<SegmentPlaceHolder>* data_pointer_collection) {
+	idx_t offset = 0;
+	this->count += append_count;
+	while (true) {
+		// append the data from the vector
+		idx_t copied_elements = state.current->ValidityAppendPlaceholder(append_count);
+		append_stats.Merge(state.current->stats.statistics);
+		if (copied_elements == append_count) {
+			// finished copying everything
+			break;
+		}
+
+		// we couldn't fit everything we wanted in the current column segment, create a new one
+		{
+			auto l = data.Lock();
+			AppendTransientSegment(l, state.current->start + state.current->count);
+			state.current = data.GetLastSegment(l);
+			state.current->InitializeAppend(state);
+		}
+		offset += copied_elements;
+		append_count -= copied_elements;
+	}
+}
+
 FilterPropagateResult ColumnData::CheckZonemap(ColumnScanState &state, TableFilter &filter) {
 	if (state.segment_checked) {
 		return FilterPropagateResult::NO_PRUNING_POSSIBLE;

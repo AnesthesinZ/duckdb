@@ -901,6 +901,17 @@ void RowGroup::CleanupAppend(transaction_t lowest_transaction, idx_t start, idx_
 	vinfo.CleanupAppend(lowest_transaction, start, count);
 }
 
+void RowGroup::AppendPlaceholder(RowGroupAppendState &state, idx_t append_count, std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection, int target_allocation_size) {
+	// append to the current row_group
+	for (idx_t i = 0; i < GetColumnCount(); i++) {
+		auto &col_data = GetColumn(i);
+		auto prev_allocation_size = col_data.GetAllocationSize();
+		col_data.AppendPlaceholder(state.states[i], append_count, data_pointer_collection);
+		allocation_size += col_data.GetAllocationSize() - prev_allocation_size;
+	}
+	state.offset_in_row_group += append_count;
+}
+
 void RowGroup::Update(TransactionData transaction, DataChunk &update_chunk, row_t *ids, idx_t offset, idx_t count,
                       const vector<PhysicalIndex> &column_ids) {
 #ifdef DEBUG

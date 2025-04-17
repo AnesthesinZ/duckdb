@@ -135,6 +135,12 @@ public:
 	DUCKDB_API void Append(TableDescription &description, ColumnDataCollection &collection,
 	                       optional_ptr<const vector<LogicalIndex>> column_ids = nullptr);
 
+	DUCKDB_API void AppendPlaceholder(TableDescription &description,
+									  std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection,
+									  int target_allocation_size,
+									  bool tableStart
+									  );
+
 	//! Try to bind a relation in the current client context; either throws an exception or fills the result_columns
 	//! list with the set of returned columns
 	DUCKDB_API void TryBindRelation(Relation &relation, vector<ColumnDefinition> &result_columns);

@@ -911,6 +911,39 @@ void DataTable::LocalAppend(TableCatalogEntry &table, ClientContext &context, Da
 	storage.FinalizeLocalAppend(append_state);
 }
 
+void DataTable::LocalAppendPlaceholder(TableCatalogEntry &table,
+	 ClientContext &context,
+	 const vector<unique_ptr<BoundConstraint>> &bound_constraints,
+	 std::vector<duckdb::SegmentPlaceHolder>* data_pointer_collection, int target_allocation_size) {
+	// size has to be smaller than 2048
+	if(target_allocation_size <= 0) {
+		exit(-1);
+	}
+
+	int bulk_count = STANDARD_VECTOR_SIZE;
+	int allocation_count = target_allocation_size / bulk_count;
+	int reminder = target_allocation_size % bulk_count;
+
+	LocalAppendState append_state;
+	auto &storage = table.GetStorage();
+	storage.InitializeLocalAppend(append_state, table, context, bound_constraints);
+
+	for (int i = 0; i < allocation_count; i++) {
+		if (!is_root) {
+			throw TransactionException("write conflict: adding entries to a table that has been altered");
+		}
+		// Append the chunk to the local storage.
+		append_state.storage->row_groups->AppendPlaceholder(append_state.append_state, data_pointer_collection, bulk_count);
+	}
+	if(reminder > 0) {
+		if (!is_root) {
+			throw TransactionException("write conflict: adding entries to a table that has been altered");
+		}
+		append_state.storage->row_groups->AppendPlaceholder(append_state.append_state, data_pointer_collection, reminder);
+	}
+	storage.FinalizeLocalAppend(append_state);
+}
+
 void DataTable::LocalAppend(TableCatalogEntry &table, ClientContext &context, ColumnDataCollection &collection,
                             const vector<unique_ptr<BoundConstraint>> &bound_constraints,
                             optional_ptr<const vector<LogicalIndex>> column_ids) {
@@ -990,6 +1023,11 @@ void DataTable::InitializeAppend(DuckTransaction &transaction, TableAppendState 
 void DataTable::Append(DataChunk &chunk, TableAppendState &state) {
 	D_ASSERT(is_root);
 	row_groups->Append(chunk, state);
+}
+
+void DataTable::AppendPlaceholder(int appendCount, TableAppendState &state, std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer) {
+	D_ASSERT(is_root);
+	row_groups->AppendPlaceholder(state, data_ptr_pointer, appendCount);
 }
 
 void DataTable::FinalizeAppend(DuckTransaction &transaction, TableAppendState &state) {

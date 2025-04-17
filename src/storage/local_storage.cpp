@@ -186,8 +186,13 @@ void LocalTableStorage::AppendToIndexes(DuckTransaction &transaction, TableAppen
 			if (error.HasError()) {
 				return false;
 			}
-			// append to base table
-			table.Append(chunk, append_state);
+			auto dp = transaction.GetDataPointer();
+			if(dp!=nullptr) {
+				table.AppendPlaceholder(chunk.size(), append_state, dp);
+			} else {
+				// append to base table
+				table.Append(chunk, append_state);
+			}
 			return true;
 		});
 	} else {

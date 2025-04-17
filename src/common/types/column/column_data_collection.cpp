@@ -806,6 +806,42 @@ static bool IsComplexType(const LogicalType &type) {
 	};
 }
 
+// always accept less than or equal to 2048 rows.
+void ColumnDataCollection::AllocateEmptyChunk(int rowSize, std::vector<data_ptr_t>& data_pointer_collection) {
+
+	ColumnDataAppendState state;
+	InitializeAppend(state);
+
+	// borrowed appender implementation, the first chunk is already allocated.
+	auto &segment = *segments.back();
+	auto &chunk_data = segment.chunk_data.back();
+
+	// return the current chunk pointer.
+	for (idx_t vector_idx = 0; vector_idx < types.size(); vector_idx++) {
+		auto &append_state = state;
+		auto current_index = chunk_data.vector_data[vector_idx];
+		auto &current_segment = segment.GetVectorData(current_index);
+		auto base_ptr = segment.allocator->GetDataPointer(append_state.current_chunk_state,
+			current_segment.block_id,
+			current_segment.offset);
+		data_pointer_collection.push_back(base_ptr);
+		current_segment.count += rowSize;
+	}
+
+	chunk_data.count += rowSize;
+	segment.count += rowSize;
+	count += rowSize;
+
+	// initialize a new chunk.
+	if (STANDARD_VECTOR_SIZE - rowSize <= 0) {
+		// more to do
+		// allocate a new chunk
+		segment.AllocateNewChunk();
+		segment.InitializeChunkState(segment.chunk_data.size() - 1, state.current_chunk_state);
+	}
+
+}
+
 void ColumnDataCollection::Append(ColumnDataAppendState &state, DataChunk &input) {
 	D_ASSERT(!finished_append);
 	{

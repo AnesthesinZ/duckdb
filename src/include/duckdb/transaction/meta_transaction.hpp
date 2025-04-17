@@ -64,6 +64,18 @@ public:
 		return all_transactions;
 	}
 
+	void SetDataPointer(std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer) {
+		this->data_ptr_pointer = data_ptr_pointer;
+	}
+
+	std::vector<duckdb::SegmentPlaceHolder>* GetDataPointer() {
+		return this->data_ptr_pointer;
+	}
+
+	bool isAppendPlaceHolder() const {
+		return data_ptr_pointer != nullptr;
+	}
+
 private:
 	//! Lock to prevent all_transactions and transactions from getting out of sync
 	mutex lock;
@@ -75,6 +87,8 @@ private:
 	optional_ptr<AttachedDatabase> modified_database;
 	//! Whether or not the meta transaction is marked as read only
 	bool is_read_only;
+
+	std::vector<duckdb::SegmentPlaceHolder>* data_ptr_pointer = nullptr;
 };
 
 } // namespace duckdb
