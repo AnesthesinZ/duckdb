@@ -221,12 +221,13 @@ idx_t ColumnSegment::AppendPlaceholder(ColumnAppendState &state,
 	return copy_count;
 }
 
-idx_t ColumnSegment::ValidityAppendPlaceholder(idx_t allocation_count) {
+idx_t ColumnSegment::ValidityAppendPlaceholder(ColumnAppendState &state, idx_t allocation_count) {
 	D_ASSERT(segment_type == ColumnSegmentType::TRANSIENT);
 
 	auto &validity_stats = stats.statistics;
 
-	idx_t copy_count = MinValue<idx_t>(allocation_count, 2048 - this->count);
+	idx_t max_tuple_count = state.current->segment_size / state.current->type_size;
+	idx_t copy_count = MinValue<idx_t>(allocation_count, max_tuple_count - this->count);
 
 	this->count += copy_count;
 	validity_stats.SetHasNoNullFast();

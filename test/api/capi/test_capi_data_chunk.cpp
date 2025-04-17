@@ -136,7 +136,7 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 
 	const int column_count = 11;
 	// size_t target_allocation_size = result_ptr->total_rows;
-	size_t target_allocation_size = 6001215 * 3;
+	size_t target_allocation_size = 6001215;
 
 	std::cout << "to allocate " << target_allocation_size << " records" << std::endl;
 	auto prepareStartTime = std::chrono::high_resolution_clock::now();
@@ -148,28 +148,28 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 							  .count();
 
 	std::cout << "Preallocated prepare completed in " << prepareDuration << " milliseconds" << std::endl;
-	//
-	// size_t receive_times = target_allocation_size / 2048;
-	// size_t remainder = target_allocation_size % 2048;
-	//
-	// int copy_unit = 2048;
-	//
-	// auto insertStartTime = std::chrono::high_resolution_clock::now();
-	// for(int receive_time = 0; receive_time < receive_times; receive_time++) {
-	// 	copy_to(column_count, sp, result_ptr, receive_time, copy_unit);
-	// }
-	//
-	// if(remainder > 0) {
-	// 	copy_to(column_count, sp, result_ptr, receive_times, remainder);
-	// }
-	//
-	// auto insertEndTime = std::chrono::high_resolution_clock::now();
-	//
-	// auto insertDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
-	// 						  insertEndTime - insertStartTime)
-	// 						  .count();
-	//
-	// std::cout << "insertion completed in " << insertDuration << " milliseconds" << std::endl;
+
+	size_t receive_times = target_allocation_size / 2048;
+	size_t remainder = target_allocation_size % 2048;
+
+	int copy_unit = 2048;
+
+	auto insertStartTime = std::chrono::high_resolution_clock::now();
+	for(int receive_time = 0; receive_time < receive_times; receive_time++) {
+		copy_to(column_count, sp, result_ptr, receive_time, copy_unit);
+	}
+
+	if(remainder > 0) {
+		copy_to(column_count, sp, result_ptr, receive_times, remainder);
+	}
+
+	auto insertEndTime = std::chrono::high_resolution_clock::now();
+
+	auto insertDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+							  insertEndTime - insertStartTime)
+							  .count();
+
+	std::cout << "insertion completed in " << insertDuration << " milliseconds" << std::endl;
 
 	duckdb_destroy_segment_placeholder(sp, column_count);
 	duckdb_appender_destroy(&appender);
@@ -177,17 +177,17 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 	duckdb_destroy_chunk_data_ptrs(result_ptr);
 	duckdb_destroy_result(&result);
 
-	// if(duckdb_query(con, "ATTACH 'tt.db' AS transfer;", &result) != DuckDBSuccess) {
-	// 	fprintf(stderr, "Failed to attach file db.\n");
-	// }
-	//
-	// if(duckdb_query(con, "DROP TABLE transfer.lineitem_cp;", &result) != DuckDBSuccess) {
-	// 	fprintf(stderr, "Failed to drop result table.\n");
-	// }
-	//
-	// if(duckdb_query(con, "COPY FROM DATABASE trans_mem_db TO transfer;", &result) != DuckDBSuccess) {
-	// 	fprintf(stderr, "Failed to copy to file db.\n");
-	// }
+	if(duckdb_query(con, "ATTACH 'tt.db' AS transfer;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to attach file db.\n");
+	}
+
+	if(duckdb_query(con, "DROP TABLE transfer.lineitem_cp;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to drop result table.\n");
+	}
+
+	if(duckdb_query(con, "COPY FROM DATABASE trans_mem_db TO transfer;", &result) != DuckDBSuccess) {
+		fprintf(stderr, "Failed to copy to file db.\n");
+	}
 
 	duckdb_disconnect(&con);
 	duckdb_close(&db);

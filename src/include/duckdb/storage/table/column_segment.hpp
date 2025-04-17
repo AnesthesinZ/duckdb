@@ -91,7 +91,7 @@ public:
 	//! Appends a (part of) vector to the segment, returns the amount of entries successfully appended
 	idx_t Append(ColumnAppendState &state, UnifiedVectorFormat &data, idx_t offset, idx_t count);
 	idx_t AppendPlaceholder(ColumnAppendState &state, idx_t allocation_count, SegmentPlaceHolder* segment_placeholder);
-	idx_t ValidityAppendPlaceholder(idx_t allocation_count);
+	idx_t ValidityAppendPlaceholder(ColumnAppendState &state, idx_t allocation_count);
 	//! Finalize the segment for appending - no more appends can follow on this segment
 	//! The segment should be compacted as much as possible
 	//! Returns the number of bytes occupied within the segment

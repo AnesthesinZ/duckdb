@@ -920,9 +920,10 @@ void DataTable::LocalAppendPlaceholder(TableCatalogEntry &table,
 		exit(-1);
 	}
 
-	int bulk_count = STANDARD_VECTOR_SIZE;
+	// int bulk_count = STANDARD_VECTOR_SIZE;
+	int bulk_count = 122880;
 	int allocation_count = target_allocation_size / bulk_count;
-	int reminder = target_allocation_size % bulk_count;
+	int remainder = target_allocation_size % bulk_count;
 
 	LocalAppendState append_state;
 	auto &storage = table.GetStorage();
@@ -935,11 +936,11 @@ void DataTable::LocalAppendPlaceholder(TableCatalogEntry &table,
 		// Append the chunk to the local storage.
 		append_state.storage->row_groups->AppendPlaceholder(append_state.append_state, data_pointer_collection, bulk_count);
 	}
-	if(reminder > 0) {
+	if(remainder > 0) {
 		if (!is_root) {
 			throw TransactionException("write conflict: adding entries to a table that has been altered");
 		}
-		append_state.storage->row_groups->AppendPlaceholder(append_state.append_state, data_pointer_collection, reminder);
+		append_state.storage->row_groups->AppendPlaceholder(append_state.append_state, data_pointer_collection, remainder);
 	}
 	storage.FinalizeLocalAppend(append_state);
 }

@@ -432,7 +432,7 @@ void ColumnData::ValidityAppendDataPlaceholder(BaseStatistics &append_stats, Col
 	this->count += append_count;
 	while (true) {
 		// append the data from the vector
-		idx_t copied_elements = state.current->ValidityAppendPlaceholder(append_count);
+		idx_t copied_elements = state.current->ValidityAppendPlaceholder(state, append_count);
 		append_stats.Merge(state.current->stats.statistics);
 		if (copied_elements == append_count) {
 			// finished copying everything

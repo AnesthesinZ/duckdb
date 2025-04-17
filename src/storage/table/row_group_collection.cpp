@@ -457,7 +457,7 @@ bool RowGroupCollection::AppendPlaceholder(TableAppendState &state,
 		if (append_count > 0) {
 			auto previous_allocation_size = current_row_group->GetAllocationSize();
 			current_row_group->AppendPlaceholder(state.row_group_append_state, target_allocation_size, data_pointer_collection, target_allocation_size);
-			allocation_size += current_row_group->GetAllocationSize() - previous_allocation_size;
+			this->allocation_size += current_row_group->GetAllocationSize() - previous_allocation_size;
 			// merge the stats
 			current_row_group->MergeIntoStatistics(stats);
 		}

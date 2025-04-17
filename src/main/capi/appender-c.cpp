@@ -321,21 +321,7 @@ DUCKDB_C_API segment_placeholder* duckdb_appender_placeholder(duckdb_appender du
 	if(target_allocation_size <= 2048) {
 		appender_instance->appender->AppendPlaceholder(target_allocation_size, &data_ptr_pointer, true);
 	} else {
-		appender_instance->appender->AppendPlaceholder(2048, &data_ptr_pointer, true);
-
-		int rest_to_allocate = target_allocation_size - 2048;
-
-		int bulk_size = 2048 * 100;
-
-		int bulks = rest_to_allocate / bulk_size;
-		int residual = rest_to_allocate % bulk_size;
-
-		for(int i = 0; i < bulks; i++) {
-			appender_instance->appender->AppendPlaceholder(bulk_size, &data_ptr_pointer, false);
-		}
-		if (residual > 0) {
-			appender_instance->appender->AppendPlaceholder(residual, &data_ptr_pointer, false);
-		}
+		appender_instance->appender->AppendPlaceholder(target_allocation_size, &data_ptr_pointer, false);
 	}
 
 	segment_placeholder* result = new segment_placeholder[column_count];
