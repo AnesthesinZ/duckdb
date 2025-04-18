@@ -1209,11 +1209,11 @@ void ClientContext::AppendPlaceholder(TableDescription &description,
 
 		idx_t row_group_size = table_entry.GetStorage().GetRowGroupSize();
 
-		if(tableStart || row_group_size < target_allocation_size) {
+		// if(tableStart || row_group_size < target_allocation_size) {
 			table_entry.GetStorage().LocalAppendPlaceholder(table_entry, *this, bound_constraints, data_pointer_collection, target_allocation_size);
-		} else {
-			table_entry.GetStorage().LocalAppendPlaceholder(table_entry, *this, bound_constraints, nullptr, target_allocation_size);
-		}
+		// } else {
+			// table_entry.GetStorage().LocalAppendPlaceholder(table_entry, *this, bound_constraints, nullptr, target_allocation_size);
+		// }
 	});
 }
 
