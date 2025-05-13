@@ -1066,8 +1066,16 @@ typedef struct {
 } chunk_results;
 
 typedef struct {
+	int start_size;
+	int end_size;
+	int transfer_times;
+	// including start and end
+} transfer_detail;
+
+typedef struct {
 	uint8_t** segment_starts;
 	idx_t* segment_tuple_counts;
+	transfer_detail* transfer_details;
 	idx_t number_of_segments;
 	int next_seg_for_write;
 } segment_placeholder;

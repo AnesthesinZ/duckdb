@@ -336,10 +336,65 @@ DUCKDB_C_API segment_placeholder* duckdb_appender_placeholder(duckdb_appender du
 
 		placeholder.segment_starts = new uint8_t*[count];
 		placeholder.segment_tuple_counts = new idx_t[count];
+		placeholder.transfer_details = new transfer_detail[count];
 
+		int prev_end_size = 0;
 		for (size_t j = 0; j < count; ++j) {
+			int transfer_times = 0;
 			placeholder.segment_starts[j] = seg.segment_start.data()[j];
 			placeholder.segment_tuple_counts[j] = seg.max_tuple_count[j];
+
+			placeholder.transfer_details[j].start_size = (2048 - prev_end_size) < seg.max_tuple_count[j] ?
+				(2048 - prev_end_size) : seg.max_tuple_count[j];
+
+			if (placeholder.transfer_details[j].start_size > 0) {
+				transfer_times++;
+			}
+
+			idx_t rest_to_calculate = seg.max_tuple_count[j] - placeholder.transfer_details[j].start_size;
+
+			transfer_times += rest_to_calculate / 2048;
+			int remainder = rest_to_calculate % 2048;
+
+			if(remainder > 0) {
+				transfer_times++;
+			}
+
+			placeholder.transfer_details[j].transfer_times = transfer_times;
+
+			if(transfer_times <= 1) {
+				placeholder.transfer_details[j].end_size = 0;
+			} else {
+				placeholder.transfer_details[j].end_size = remainder;
+			}
+			prev_end_size = placeholder.transfer_details[j].end_size;
+
+			// // verify;
+			// int verify_size = 0;
+			// if(placeholder.transfer_details[j].transfer_times == 0) {
+			// 	verify_size = 0;
+			// } else if(placeholder.transfer_details[j].transfer_times == 1) {
+			// 	verify_size += placeholder.transfer_details[j].start_size;
+			// } else if(placeholder.transfer_details[j].transfer_times == 2) {
+			// 	verify_size += placeholder.transfer_details[j].start_size;
+			// 	verify_size += placeholder.transfer_details[j].end_size;
+			// } else {
+			// 	verify_size += placeholder.transfer_details[j].start_size;
+			// 	verify_size += placeholder.transfer_details[j].end_size;
+			// 	if(placeholder.transfer_details[j].end_size > 0) {
+			// 		verify_size += (placeholder.transfer_details[j].transfer_times - 2) * 2048;
+			// 	} else {
+			// 		verify_size += (placeholder.transfer_details[j].transfer_times - 1) * 2048;
+			// 	}
+			// }
+			//
+			// if(placeholder.transfer_details[j].start_size == 0) {
+			// 	exit(-1);
+			// }
+			// if(verify_size != placeholder.segment_tuple_counts[j]) {
+			// 	exit(-1);
+			// }
+			// // verify end.
 		}
 		placeholder.next_seg_for_write = 0;
 	}
@@ -350,6 +405,7 @@ DUCKDB_C_API void duckdb_destroy_segment_placeholder(segment_placeholder* result
 	for (int i = 0; i < column_count; ++i) {
 		delete[] result[i].segment_starts;
 		delete[] result[i].segment_tuple_counts;
+		delete[] result[i].transfer_details;
 	}
 	delete[] result;
 }

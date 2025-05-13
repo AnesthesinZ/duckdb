@@ -81,6 +81,46 @@ void copy_to(int column_count, segment_placeholder* sp, chunk_results* result_pt
 	}
 }
 
+
+void copy_to_rdma(int column_count, segment_placeholder* sp, chunk_results* result_ptr, int copy_unit) {
+	// always send by column
+	for(int column_idx = 0; column_idx < column_count; column_idx++) {
+		int unit_size = get_unit(schema_v2[column_idx]);
+		int receive_time = 0;
+
+		// the first chunk
+		uint8_t* src_ptr = (uint8_t*) result_ptr->vector_pointers[receive_time * column_count + column_idx];
+
+		for(int seg_idx = 0; seg_idx < sp[column_idx].number_of_segments; seg_idx++) {
+			transfer_detail transfer_detail = sp[column_idx].transfer_details[seg_idx];
+
+			// send/receive the start amount
+			auto dest_ptr = sp[column_idx].segment_starts[seg_idx];
+			memcpy(dest_ptr, src_ptr, transfer_detail.start_size * unit_size);
+			dest_ptr += transfer_detail.start_size * unit_size;
+			receive_time ++;
+
+			// send/receive the middle amount by chunk size
+			int receive_full_chunk_times = transfer_detail.transfer_times - 1;
+			if(transfer_detail.end_size > 0) {
+				receive_full_chunk_times --;
+			}
+			for(int i = 0; i < receive_full_chunk_times; i++) {
+				src_ptr = (uint8_t*) result_ptr->vector_pointers[receive_time * column_count + column_idx];
+				memcpy(dest_ptr, src_ptr, copy_unit * unit_size);
+				dest_ptr += copy_unit * unit_size;
+				receive_time ++;
+			}
+
+			// send/receive the end amount
+			src_ptr = (uint8_t*) result_ptr->vector_pointers[receive_time * column_count + column_idx];
+			memcpy(dest_ptr, src_ptr, transfer_detail.end_size * unit_size);
+			dest_ptr += transfer_detail.end_size * unit_size;
+			src_ptr += transfer_detail.end_size * unit_size;
+		}
+	}
+}
+
 TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", "[capi]") {
 	duckdb_database db;
 	duckdb_connection con;
@@ -155,13 +195,7 @@ TEST_CASE("Test table_info incorrect 'is_valid' value for 'dflt_value' column", 
 	int copy_unit = 2048;
 
 	auto insertStartTime = std::chrono::high_resolution_clock::now();
-	for(int receive_time = 0; receive_time < receive_times; receive_time++) {
-		copy_to(column_count, sp, result_ptr, receive_time, copy_unit);
-	}
-
-	if(remainder > 0) {
-		copy_to(column_count, sp, result_ptr, receive_times, remainder);
-	}
+	copy_to_rdma(column_count, sp, result_ptr, copy_unit);
 
 	auto insertEndTime = std::chrono::high_resolution_clock::now();
 
